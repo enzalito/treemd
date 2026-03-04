@@ -107,9 +107,9 @@ impl Default for Keybindings {
 
 impl Clone for Keybindings {
     fn clone(&self) -> Self {
-        // We need to rebuild since Keybinds doesn't implement Clone
-        // This is fine since cloning is rare (only during config reload)
-        defaults::default_keybindings()
+        Self {
+            bindings: self.bindings.clone(),
+        }
     }
 }
 
@@ -215,7 +215,7 @@ impl Keybindings {
         let mut action_keys: HashMap<Action, Vec<String>> = HashMap::new();
 
         if let Some(kb) = self.bindings.get(&mode) {
-            for bind in kb.as_slice() {
+            for bind in kb.as_slice().iter().filter(|b| b.action != Action::Noop) {
                 let key_str = format_key_sequence(&bind.seq);
                 action_keys.entry(bind.action).or_default().push(key_str);
             }
@@ -387,6 +387,73 @@ mod tests {
 
         let keys = kb.keys_for_action(KeybindingMode::Normal, Action::Next);
         assert!(!keys.is_empty()); // j and/or Down should be bound
+    }
+
+    #[test]
+    fn test_user_config_overrides_defaults() {
+        let mut config_map = HashMap::new();
+        let mut normal_bindings = HashMap::new();
+        // Rebind 'j' from Next (default) to Last
+        normal_bindings.insert("j".to_string(), Action::Last);
+        config_map.insert(KeybindingMode::Normal, normal_bindings);
+        let config = KeybindingsConfig(config_map);
+
+        let mut kb = config.to_keybindings();
+        let action = kb.dispatch(
+            KeybindingMode::Normal,
+            make_key_event(KeyCode::Char('j'), KeyModifiers::NONE),
+        );
+        assert_eq!(action, Some(Action::Last), "User binding must override default");
+    }
+
+    #[test]
+    fn test_noop_unbinds_key() {
+        let mut config_map = HashMap::new();
+        let mut normal_bindings = HashMap::new();
+        // Unbind 'j' by mapping to Noop
+        normal_bindings.insert("j".to_string(), Action::Noop);
+        config_map.insert(KeybindingMode::Normal, normal_bindings);
+        let config = KeybindingsConfig(config_map);
+
+        let mut kb = config.to_keybindings();
+        let action = kb.dispatch(
+            KeybindingMode::Normal,
+            make_key_event(KeyCode::Char('j'), KeyModifiers::NONE),
+        );
+        assert_eq!(action, None, "Noop binding should effectively unbind the key");
+    }
+
+    #[test]
+    fn test_clone_preserves_user_config() {
+        let mut config_map = HashMap::new();
+        let mut normal_bindings = HashMap::new();
+        normal_bindings.insert("j".to_string(), Action::Last);
+        config_map.insert(KeybindingMode::Normal, normal_bindings);
+        let config = KeybindingsConfig(config_map);
+
+        let kb = config.to_keybindings();
+        let mut cloned = kb.clone();
+        let action = cloned.dispatch(
+            KeybindingMode::Normal,
+            make_key_event(KeyCode::Char('j'), KeyModifiers::NONE),
+        );
+        assert_eq!(action, Some(Action::Last), "Clone must preserve user bindings");
+    }
+
+    #[test]
+    fn test_noop_filtered_from_help_entries() {
+        let mut config_map = HashMap::new();
+        let mut normal_bindings = HashMap::new();
+        normal_bindings.insert("j".to_string(), Action::Noop);
+        config_map.insert(KeybindingMode::Normal, normal_bindings);
+        let config = KeybindingsConfig(config_map);
+
+        let kb = config.to_keybindings();
+        let entries = kb.help_entries(KeybindingMode::Normal);
+        assert!(
+            !entries.iter().any(|(action, _)| *action == Action::Noop),
+            "Noop should not appear in help entries"
+        );
     }
 
     #[test]

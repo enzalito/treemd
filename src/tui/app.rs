@@ -2980,7 +2980,7 @@ impl App {
         // Decide whether to persist based on user's config type
         if self.config_has_custom_outline_width {
             // Power user: protect their custom config value, offer explicit save
-            self.set_status_message(&format!("Width: {}% | S or :w to save", self.outline_width));
+            self.set_status_message(&format!("Width: {}% | :w to save", self.outline_width));
         } else {
             // New user or standard config: safe to persist for better UX
             let _ = self.config.set_outline_width(self.outline_width);

@@ -69,7 +69,7 @@ impl HelpLine {
                 desc,
             } => {
                 let key = Self::format_action_keys(keybindings, mode, actions);
-                let key_width = KEY_COLUMN_WIDTH - prefix.len();
+                let key_width = KEY_COLUMN_WIDTH.saturating_sub(prefix.len());
                 let formatted_key = format!("  {}{:<width$}", prefix, key, width = key_width);
                 Line::from(vec![
                     Span::styled(formatted_key, Style::default().fg(theme.modal_key_fg())),
@@ -265,7 +265,7 @@ pub const HELP_LINES: &[HelpLine] = &[
         &[InteractiveActivate],
         "Edit table cell (in table mode)",
     ),
-    keybinding(InteractiveTable, &[Quit], "Exit interactive mode"),
+    keybinding(InteractiveTable, &[ExitMode], "Exit table navigation"),
     blank(),
     // Themes & Clipboard
     section("Themes & Clipboard"),
