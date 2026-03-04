@@ -1013,6 +1013,8 @@ impl App {
         use Action::*;
 
         match action {
+            // === Miscellaneous ===
+            Noop => {}
             // === Application ===
             Quit => {
                 // If in accepted outline search state, clear search instead of quitting

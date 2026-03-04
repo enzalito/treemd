@@ -32,7 +32,7 @@ pub use action::Action;
 use crossterm::event::KeyEvent;
 use keybinds::Keybinds;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Application modes that have their own keybinding sets
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -113,6 +113,21 @@ impl Clone for Keybindings {
     }
 }
 
+impl TryFrom<&KeybindingsConfig> for Keybindings {
+    type Error = keybinds::Error;
+    fn try_from(config: &KeybindingsConfig) -> Result<Self, Self::Error> {
+        (config.0)
+            .iter()
+            .try_fold(Keybindings::new(), |mut kb, (mode, mode_bindings)| {
+                let bindings = kb.bindings.entry(*mode).or_default();
+                for (key_str, action) in mode_bindings {
+                    let _ = bindings.bind(key_str, *action)?;
+                }
+                Ok(kb)
+            })
+    }
+}
+
 impl Keybindings {
     /// Create empty keybindings
     pub fn new() -> Self {
@@ -163,6 +178,11 @@ impl Keybindings {
             .bind(key_sequence, action)
     }
 
+    /// Push a new keybind to a mode
+    pub fn push(&mut self, mode: KeybindingMode, bind: keybinds::Keybind<Action>) {
+        self.bindings.entry(mode).or_default().push(bind);
+    }
+
     /// Get all keys bound to an action in a mode (for help text generation)
     pub fn keys_for_action(&self, mode: KeybindingMode, action: Action) -> Vec<String> {
         self.bindings
@@ -197,16 +217,31 @@ impl Keybindings {
         entries
     }
 
-    /// Merge another keybindings set into this one (other takes precedence)
-    pub fn merge(&mut self, other: &KeybindingsConfig) -> Result<(), String> {
-        for (mode, mode_bindings) in &other.0 {
-            let kb = self.bindings.entry(*mode).or_default();
-            for (key_str, action) in mode_bindings {
-                kb.bind(key_str, *action)
-                    .map_err(|e| format!("Invalid key '{}': {}", key_str, e))?;
+    /// Merge another keybindings set into this one (self takes precedence)
+    pub fn merge(&mut self, other: &Keybindings) {
+        for (mode, mode_bindings) in &other.bindings {
+            let existing_seqs: HashSet<&_> = self
+                .bindings
+                .get(mode)
+                .map(|mode_bindings| {
+                    mode_bindings
+                        .as_slice()
+                        .iter()
+                        .map(|binding| &binding.seq)
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            let to_add: Vec<_> = mode_bindings
+                .as_slice()
+                .iter()
+                .filter(|binding| !existing_seqs.contains(&binding.seq))
+                .collect();
+
+            for binding in to_add {
+                self.push(*mode, binding.clone());
             }
         }
-        Ok(())
     }
 }
 
@@ -291,12 +326,14 @@ pub struct KeybindingsConfig(pub HashMap<KeybindingMode, HashMap<String, Action>
 impl KeybindingsConfig {
     /// Convert to Keybindings, using defaults for any missing bindings
     pub fn to_keybindings(&self) -> Keybindings {
-        let mut keybindings = Keybindings::default();
-
-        // Override with user config (silently ignore invalid keys)
-        let _ = keybindings.merge(self);
-
-        keybindings
+        Keybindings::try_from(self)
+            .map(|mut kb| {
+                // Complete user config with defaults
+                kb.merge(&Keybindings::default());
+                kb
+            })
+            // Use defaults if user config has errors
+            .unwrap_or_default()
     }
 
     /// Check if the config is empty
