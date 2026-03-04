@@ -403,7 +403,11 @@ mod tests {
             KeybindingMode::Normal,
             make_key_event(KeyCode::Char('j'), KeyModifiers::NONE),
         );
-        assert_eq!(action, Some(Action::Last), "User binding must override default");
+        assert_eq!(
+            action,
+            Some(Action::Last),
+            "User binding must override default"
+        );
     }
 
     #[test]
@@ -420,7 +424,10 @@ mod tests {
             KeybindingMode::Normal,
             make_key_event(KeyCode::Char('j'), KeyModifiers::NONE),
         );
-        assert_eq!(action, None, "Noop binding should effectively unbind the key");
+        assert_eq!(
+            action, None,
+            "Noop binding should effectively unbind the key"
+        );
     }
 
     #[test]
@@ -437,7 +444,11 @@ mod tests {
             KeybindingMode::Normal,
             make_key_event(KeyCode::Char('j'), KeyModifiers::NONE),
         );
-        assert_eq!(action, Some(Action::Last), "Clone must preserve user bindings");
+        assert_eq!(
+            action,
+            Some(Action::Last),
+            "Clone must preserve user bindings"
+        );
     }
 
     #[test]

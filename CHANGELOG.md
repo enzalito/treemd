@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.9] - 2026-03-04
+
+### Added
+
+- **Dynamic help text** - Help popup now displays actual configured keybindings instead of hardcoded key strings ([#47](https://github.com/Epistates/treemd/pull/47))
+  - User-customized keybindings are reflected in the help menu at render time
+  - Structured `HelpLine` enum replaces raw string-based help entries
+
+- **`Noop` action for keybinding customization** - Users can unbind keys by mapping them to `Noop` in their config ([#46](https://github.com/Epistates/treemd/pull/46))
+  - `Noop` entries are automatically filtered from the help popup
+
+- **Regression tests for keybinding system** - Added tests for user config override, `Noop` unbinding, clone preservation, and help entry filtering
+
+### Fixed
+
+- **Keybinding config merging** - User-defined keybindings now correctly override defaults ([#46](https://github.com/Epistates/treemd/pull/46))
+  - Previously, defaults were inserted first in the dispatch `Vec` and matched before user overrides
+  - New approach replaces matching default bindings in-place, preserving user precedence
+
+- **`Clone` for `Keybindings` discarded user config** - `clone()` always returned default keybindings; now properly clones binding state
+
+- **Wrong action in help for "Exit interactive mode"** - Help text used `Quit` (which exits the app) instead of `ExitMode` for table navigation exit
+
+- **Duplicate `t` keybinding** - Both `ToggleTodoFilter` and `ToggleThemePicker` were bound to `t` in Normal mode; `ToggleTodoFilter` moved to `T` (Shift+t)
+
+- **Phantom `S` key in status bar** - "S or :w to save" referenced an unbound key; updated to ":w to save"
+
+- **Editor in interactive mode** - `OpenInEditor` now jumps to the interactive element's source line instead of the selected heading ([#45](https://github.com/Epistates/treemd/issues/45))
+
+- **File picker missing from help menu** - Added file picker entry to help text
+
+- **Potential `usize` underflow in help text** - Key column width calculation now uses `saturating_sub`
+
 ## [0.5.8] - 2026-03-01
 
 ### Added
