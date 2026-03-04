@@ -1,3 +1,8 @@
+use crate::keybindings::{
+    Action::{self, *},
+    KeybindingMode::{self, *},
+    Keybindings,
+};
 use crate::tui::theme::Theme;
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
@@ -11,7 +16,9 @@ pub enum HelpLine {
     Description(&'static str),
     SectionHeader(&'static str),
     KeyBinding {
-        key: &'static str,
+        prefix: &'static str,
+        mode: KeybindingMode,
+        actions: &'static [Action],
         desc: &'static str,
     },
     Note(&'static str),
@@ -19,8 +26,25 @@ pub enum HelpLine {
 }
 
 impl HelpLine {
+    fn format_action_keys(
+        keybindings: &Keybindings,
+        mode: KeybindingMode,
+        actions: &'static [Action],
+    ) -> String {
+        actions
+            .iter()
+            .filter_map(|action| {
+                keybindings
+                    .keys_for_action(mode, *action)
+                    .into_iter()
+                    .next()
+            })
+            .collect::<Vec<String>>()
+            .join("/")
+    }
+
     /// Convert this help line to a styled ratatui Line
-    pub fn to_line(self, theme: &Theme) -> Line<'static> {
+    pub fn to_line(self, keybindings: &Keybindings, theme: &Theme) -> Line<'static> {
         match self {
             HelpLine::Title(text) => Line::from(vec![Span::styled(
                 text.to_string(),
@@ -38,8 +62,15 @@ impl HelpLine {
                 text.to_string(),
                 Style::default().add_modifier(Modifier::BOLD),
             )]),
-            HelpLine::KeyBinding { key, desc } => {
-                let formatted_key = format!("  {:<width$}", key, width = KEY_COLUMN_WIDTH);
+            HelpLine::KeyBinding {
+                prefix,
+                mode,
+                actions,
+                desc,
+            } => {
+                let key = Self::format_action_keys(keybindings, mode, actions);
+                let key_width = KEY_COLUMN_WIDTH - prefix.len();
+                let formatted_key = format!("  {}{:<width$}", prefix, key, width = key_width);
                 Line::from(vec![
                     Span::styled(formatted_key, Style::default().fg(theme.modal_key_fg())),
                     Span::raw(desc.to_string()),
@@ -74,8 +105,31 @@ const fn section(text: &'static str) -> HelpLine {
     HelpLine::SectionHeader(text)
 }
 
-const fn keybinding(key: &'static str, desc: &'static str) -> HelpLine {
-    HelpLine::KeyBinding { key, desc }
+const fn keybinding(
+    mode: KeybindingMode,
+    actions: &'static [Action],
+    desc: &'static str,
+) -> HelpLine {
+    HelpLine::KeyBinding {
+        prefix: "",
+        mode,
+        actions,
+        desc,
+    }
+}
+
+const fn prefixed_keybinding(
+    prefix: &'static str,
+    mode: KeybindingMode,
+    actions: &'static [Action],
+    desc: &'static str,
+) -> HelpLine {
+    HelpLine::KeyBinding {
+        prefix,
+        mode,
+        actions,
+        desc,
+    }
 }
 
 const fn note(text: &'static str) -> HelpLine {
@@ -93,69 +147,144 @@ pub const HELP_LINES: &[HelpLine] = &[
     blank(),
     // Navigation section
     section("Navigation"),
-    keybinding("j/↓", "Move down"),
-    keybinding("k/↑", "Move up"),
-    keybinding("g", "Jump to top"),
-    keybinding("G", "Jump to bottom"),
-    keybinding("p", "Jump to parent heading"),
-    keybinding("d", "Page down (content)"),
-    keybinding("u", "Page up (content)"),
+    keybinding(Normal, &[Next], "Move down"),
+    keybinding(Normal, &[Previous], "Move up"),
+    keybinding(Normal, &[First], "Jump to top"),
+    keybinding(Normal, &[Last], "Jump to bottom"),
+    keybinding(Normal, &[JumpToParent], "Jump to parent heading"),
+    keybinding(Normal, &[PageDown], "Page down (content)"),
+    keybinding(Normal, &[PageUp], "Page up (content)"),
     blank(),
     // Tree Operations
     section("Tree Operations"),
-    keybinding("Enter/Space", "Toggle expand/collapse"),
-    keybinding("l/→", "Expand heading"),
-    keybinding("h/←", "Collapse (or parent if no children)"),
+    keybinding(Normal, &[ToggleExpand], "Toggle expand/collapse"),
+    keybinding(Normal, &[Expand], "Expand heading"),
+    keybinding(Normal, &[Collapse], "Collapse (or parent if no children)"),
     blank(),
     // General
     section("General"),
-    keybinding("Tab", "Switch between Outline and Content"),
-    keybinding("/", "Search document content (Esc: clear, n/N: navigate)"),
-    keybinding("s", "Filter outline headings (Esc: clear, Enter: keep)"),
-    keybinding("n/N", "Next/previous search match"),
-    keybinding("o/Ctrl+o", "Open file picker"),
-    keybinding("r", "Toggle raw source view"),
-    keybinding("?", "Toggle this help"),
-    keybinding("q/Esc", "Quit"),
+    keybinding(Normal, &[ToggleFocus], "Switch between Outline and Content"),
+    keybinding(Normal, &[EnterDocSearch], "Search document content"),
+    keybinding(Normal, &[EnterSearchMode], "Filter outline headings"),
+    keybinding(Search, &[ExitMode], "Clear search"),
+    keybinding(Search, &[ConfirmAction], "Confirm search"),
+    keybinding(
+        Normal,
+        &[NextMatch, PrevMatch],
+        "Next/previous search match",
+    ),
+    keybinding(Normal, &[OpenFilePicker], "Open file picker"),
+    keybinding(Normal, &[ToggleRawSource], "Toggle raw source view"),
+    keybinding(Normal, &[ToggleHelp], "Toggle this help"),
+    keybinding(Normal, &[Quit], "Quit"),
     blank(),
     // UX Features
     section("UX Features"),
-    keybinding("w", "Toggle outline visibility (full-width content)"),
-    keybinding("[ ]", "Decrease/increase outline width (20%, 30%, 40%)"),
-    keybinding("S", "Save outline width to config (with confirmation)"),
-    keybinding(":", "Open command palette (fuzzy search commands)"),
-    keybinding("[N]j/k", "Move N items (vim count prefix, e.g., 5j)"),
-    keybinding("m", "Set bookmark (shows ⚑ indicator)"),
-    keybinding("'", "Jump to bookmarked position"),
+    keybinding(
+        Normal,
+        &[ToggleOutline],
+        "Toggle outline visibility (full-width content)",
+    ),
+    keybinding(
+        Normal,
+        &[OutlineWidthDecrease, OutlineWidthIncrease],
+        "Decrease/increase outline width (20%, 30%, 40%)",
+    ),
+    keybinding(
+        Normal,
+        &[OpenCommandPalette],
+        "Open command palette (fuzzy search commands)",
+    ),
+    prefixed_keybinding(
+        "[N]",
+        Normal,
+        &[Next, Previous],
+        "Move N items (vim count prefix, e.g., 5j)",
+    ),
+    keybinding(Normal, &[SetBookmark], "Set bookmark (shows ⚑ indicator)"),
+    keybinding(Normal, &[JumpToBookmark], "Jump to bookmarked position"),
     blank(),
     // Link Following
     section("Link Following"),
-    keybinding("f", "Enter link follow mode"),
-    keybinding("Tab", "Cycle through links (in link mode)"),
-    keybinding("1-9", "Jump to link by number (in link mode)"),
-    keybinding("Enter", "Follow selected link (in link mode)"),
-    keybinding("p", "Jump to parent's links (stay in link mode)"),
-    keybinding("b/Bksp", "Go back to previous file"),
-    keybinding("F", "Go forward in navigation history"),
+    keybinding(Normal, &[EnterLinkFollowMode], "Enter link follow mode"),
+    keybinding(
+        LinkFollow,
+        &[NextLink],
+        "Cycle through links (in link mode)",
+    ),
+    prefixed_keybinding(
+        "[1-9]",
+        LinkFollow,
+        &[],
+        "Jump to link by number (in link mode)",
+    ),
+    keybinding(
+        LinkFollow,
+        &[FollowLink],
+        "Follow selected link (in link mode)",
+    ),
+    keybinding(
+        LinkFollow,
+        &[JumpToParent],
+        "Jump to parent's links (stay in link mode)",
+    ),
+    keybinding(Normal, &[GoBack], "Go back to previous file"),
+    keybinding(Normal, &[GoForward], "Go forward in navigation history"),
     blank(),
     // Interactive Mode
     section("Interactive Mode"),
-    keybinding("i", "Enter interactive mode (navigate elements)"),
-    keybinding("Tab/j/k", "Next element | Shift+Tab/k to go back"),
-    keybinding("u/d", "Page up/down (PgUp/PgDn also work)"),
-    keybinding("Enter", "Activate element (toggle/follow/edit)"),
-    keybinding("Space", "Toggle checkboxes/details blocks"),
-    keybinding("y", "Copy element (code/cell/link)"),
-    keybinding("hjkl", "Navigate table cells (in table mode)"),
-    keybinding("Enter", "Edit table cell (in table mode)"),
-    keybinding("Esc", "Exit interactive mode"),
+    keybinding(
+        Normal,
+        &[EnterInteractiveMode],
+        "Enter interactive mode (navigate elements)",
+    ),
+    keybinding(
+        Interactive,
+        &[InteractiveNext, InteractivePrevious],
+        "Next/previous element",
+    ),
+    keybinding(Interactive, &[PageUp, PageDown], "Page up/down"),
+    keybinding(
+        Interactive,
+        &[InteractiveActivate],
+        "Activate element (toggle/follow/edit)",
+    ),
+    keybinding(Interactive, &[CopyContent], "Copy element (code/cell/link)"),
+    keybinding(
+        InteractiveTable,
+        &[
+            InteractiveLeft,
+            InteractiveNext,
+            InteractivePrevious,
+            InteractiveRight,
+        ],
+        "Navigate table cells (in table mode)",
+    ),
+    keybinding(
+        InteractiveTable,
+        &[InteractiveActivate],
+        "Edit table cell (in table mode)",
+    ),
+    keybinding(InteractiveTable, &[Quit], "Exit interactive mode"),
     blank(),
     // Themes & Clipboard
     section("Themes & Clipboard"),
-    keybinding("t", "Cycle color theme"),
-    keybinding("y", "Copy current section content (works in all modes)"),
-    keybinding("Y", "Copy anchor link (works in all modes)"),
-    keybinding("e", "Edit file in default editor ($VISUAL or $EDITOR)"),
+    keybinding(Normal, &[ToggleThemePicker], "Toggle theme picker"),
+    keybinding(
+        Normal,
+        &[CopyContent],
+        "Copy current section content (works in all modes)",
+    ),
+    keybinding(
+        Normal,
+        &[CopyAnchor],
+        "Copy anchor link (works in all modes)",
+    ),
+    keybinding(
+        Normal,
+        &[OpenInEditor],
+        "Edit file in default editor ($VISUAL or $EDITOR)",
+    ),
     blank(),
     // Note
     note("On Linux, install a clipboard manager (clipit, parcellite, xclip) for best results"),
@@ -165,6 +294,9 @@ pub const HELP_LINES: &[HelpLine] = &[
 ];
 
 /// Build the help text with theme colors applied
-pub fn build_help_text(theme: &Theme) -> Vec<Line<'static>> {
-    HELP_LINES.iter().map(|line| line.to_line(theme)).collect()
+pub fn build_help_text(keybindings: &Keybindings, theme: &Theme) -> Vec<Line<'static>> {
+    HELP_LINES
+        .iter()
+        .map(|line| line.to_line(keybindings, theme))
+        .collect()
 }

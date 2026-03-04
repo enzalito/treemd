@@ -21,11 +21,12 @@ pub fn render_help_popup(frame: &mut Frame, app: &App, area: Rect) {
     // Min 40 cols for readability, min 10 rows for usable scroll area
     let popup_area = popup_area(area, 70, 80, 40, 10);
     let theme = &app.theme;
+    let keybindings = &app.keybindings;
 
     // Clear the area
     frame.render_widget(Clear, popup_area);
 
-    let help_lines = help_text::build_help_text(theme);
+    let help_lines = help_text::build_help_text(keybindings, theme);
     let help_text_len = help_lines.len();
 
     let paragraph = Paragraph::new(help_lines)
