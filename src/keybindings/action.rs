@@ -12,6 +12,10 @@ use strum::{Display, EnumIter, EnumString};
 #[serde(rename_all = "PascalCase")]
 #[strum(serialize_all = "PascalCase")]
 pub enum Action {
+    // === Miscellaneous ===
+    /// Do nothing
+    Noop,
+
     // === Navigation ===
     /// Move to next item in outline/list
     Next,
@@ -207,6 +211,9 @@ impl Action {
     /// Get a human-readable description of the action
     pub fn description(&self) -> &'static str {
         match self {
+            // Miscellaneous
+            Action::Noop => "Do nothing",
+
             // Navigation
             Action::Next => "Move to next item",
             Action::Previous => "Move to previous item",
@@ -335,6 +342,8 @@ impl Action {
     /// Get the category for grouping in help display
     pub fn category(&self) -> &'static str {
         match self {
+            Action::Noop => "Miscellaneous",
+
             Action::Next
             | Action::Previous
             | Action::First
