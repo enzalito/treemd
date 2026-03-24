@@ -116,3 +116,6 @@ strip = true
 
 # Abort on panic for smaller binary size
 panic = "abort"
+
+[build-dependencies]
+cc = "1"

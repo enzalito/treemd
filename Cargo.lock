@@ -3674,6 +3674,7 @@ name = "treemd"
 version = "0.5.9"
 dependencies = [
  "arboard",
+ "cc",
  "clap",
  "clap_complete",
  "color-eyre",
