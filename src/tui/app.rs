@@ -4,7 +4,7 @@ use crate::parser::{Document, HeadingNode, Link, extract_links};
 use crate::tui::help_text;
 use crate::tui::interactive::{ElementType, InteractiveState};
 use crate::tui::kitty_animation::{self, KittyAnimation};
-use crate::tui::syntax::SyntaxHighlighter;
+use crate::tui::syntax_old::SyntaxHighlighter;
 use crate::tui::terminal_compat::ColorMode;
 use crate::tui::theme::{Theme, ThemeName};
 use crossterm::event::{KeyCode, KeyModifiers};

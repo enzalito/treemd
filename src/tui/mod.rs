@@ -6,6 +6,7 @@ mod kitty_animation;
 #[cfg(feature = "mermaid")]
 mod mermaid;
 mod syntax;
+mod syntax_old;
 pub mod terminal_compat;
 pub mod theme;
 pub mod tty; // Public module for TTY handling

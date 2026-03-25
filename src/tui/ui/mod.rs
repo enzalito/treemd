@@ -1404,7 +1404,7 @@ fn render_footer(frame: &mut Frame, app: &App, area: Rect) {
 use crate::parser::content::parse_content;
 use crate::parser::output::{Block as ContentBlock, InlineElement};
 use crate::parser::utils::parse_inline_html;
-use crate::tui::syntax::SyntaxHighlighter;
+use crate::tui::syntax_old::SyntaxHighlighter;
 
 /// Render raw markdown source with line numbers
 fn render_raw_markdown(content: &str, theme: &Theme) -> Text<'static> {

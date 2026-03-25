@@ -1,38 +1,195 @@
 use cc;
-use std::{
-    path::PathBuf,
-    process::{self, Command},
-};
+use indoc::formatdoc;
+use std::{error::Error, fs, path::PathBuf, process::Command};
 
-pub struct ParserDefinition {
-    name: String,
-    git_repo: String,
+pub struct ParserManifest {
+    language: String,
+    repo_url: String,
     revision: String,
 }
 
-pub fn build_parsers(definitions: &Vec<ParserDefinition>) {
-    for definition in definitions {
-        let parser_dir = PathBuf::from_iter([
-            "target/tree-sitter-grammars/",
-            &definition.name,
-            &definition.revision,
-        ]);
+impl ParserManifest {
+    fn lib_name(&self) -> String {
+        format!("tree_sitter_{}", self.language)
+    }
 
-        build_parser(&definition.name, &parser_dir);
+    fn repo_dir(&self) -> PathBuf {
+        PathBuf::from_iter(["target/tree-sitter-grammars/", &self.language])
+    }
+
+    fn clone_repo(&self) -> Result<(), Box<dyn Error>> {
+        let output = Command::new("git")
+            .args([
+                "clone",
+                "--depth=1",
+                &self.repo_url,
+                &self.repo_dir().to_string_lossy(),
+            ])
+            .output()?;
+
+        if !output.status.success() {
+            return Err(format!(
+                "Failed to clone {}: {}",
+                self.lib_name(),
+                String::from_utf8_lossy(&output.stderr)
+            )
+            .into());
+        }
+
+        Ok(())
+    }
+
+    fn fetch_repo(&self) -> Result<(), Box<dyn Error>> {
+        let output = Command::new("git")
+            .current_dir(self.repo_dir())
+            .args(["fetch", "origin"])
+            .output()?;
+
+        if !output.status.success() {
+            return Err(format!(
+                "Failed to fetch {}: {}",
+                self.lib_name(),
+                String::from_utf8_lossy(&output.stderr)
+            )
+            .into());
+        }
+
+        Ok(())
+    }
+
+    fn checkout_repo(&self) -> Result<(), Box<dyn Error>> {
+        let output = Command::new("git")
+            .current_dir(self.repo_dir())
+            .args(["checkout", &format!("origin/{}", self.revision)])
+            .output()?;
+
+        if !output.status.success() {
+            return Err(format!(
+                "Failed to checkout {}: {}",
+                self.lib_name(),
+                String::from_utf8_lossy(&output.stderr)
+            )
+            .into());
+        }
+
+        Ok(())
+    }
+
+    fn get_repo_revision(&self) -> Result<String, Box<dyn Error>> {
+        let output = Command::new("git")
+            .current_dir(self.repo_dir())
+            .args(["rev-parse", "HEAD"])
+            .output()?;
+
+        if !output.status.success() {
+            return Err(format!(
+                "Failed to rev-parse {}: {}",
+                self.lib_name(),
+                String::from_utf8_lossy(&output.stderr)
+            )
+            .into());
+        }
+
+        let sha = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Ok(sha)
+    }
+
+    fn compile_source(&self) -> Result<(), Box<dyn Error>> {
+        let source = self.repo_dir().join("src/parser.c");
+
+        cc::Build::new()
+            .file(&source)
+            .try_compile(&self.lib_name())?;
+
+        Ok(())
+    }
+
+    fn gen_wrapper(&self) -> Result<(), Box<dyn Error>> {
+        let out_dir = std::env::var("OUT_DIR")?;
+        let file_name = self.lib_name() + ".rs";
+        let file_path = PathBuf::from_iter([&out_dir, &file_name]);
+
+        let highlights_path = self.repo_dir().join("queries/highlights.scm");
+        let highlights_file_name = &format!("{}.scm", self.language);
+        let highlights_out_path = PathBuf::from_iter([&out_dir, highlights_file_name]);
+        fs::copy(highlights_path, highlights_out_path)?;
+
+        let file_content = formatdoc! {"
+            mod {0} {{
+                use tree_sitter_language::LanguageFn;
+
+                unsafe extern \"C\" {{
+                    fn {0}() -> *const ();
+                }}
+
+                pub const LANGUAGE: LanguageFn = unsafe {{ LanguageFn::from_raw({0}) }};
+
+                pub const HIGHLIGHTS_QUERY: &str = include_str!(concat!(env!(\"OUT_DIR\"), \"/{highlights_file_name}\"));
+            }}",
+            self.lib_name(),
+        };
+
+        fs::write(file_path, file_content)?;
+
+        Ok(())
     }
 }
 
-pub fn build_parser(name: &String, dir: &PathBuf) {
-    let source = dir.join("src/parser.c");
-    if !source.exists() {
-        eprintln!(
-            "Build failed: missing tree-sitter parser source: {}",
-            source.display()
-        );
-        process::exit(1);
+pub struct ParserManifests(Vec<ParserManifest>);
+
+impl ParserManifests {
+    pub fn build(&self) -> Result<(), Box<dyn Error>> {
+        let cur_file = file!();
+        println!("cargo:rerun-if-changed={cur_file}");
+
+        for manifest in &self.0 {
+            if !manifest.repo_dir().exists() {
+                manifest.clone_repo()?;
+            } else {
+                match manifest.get_repo_revision() {
+                    Ok(rev) if rev == manifest.revision => continue,
+                    _ => manifest.fetch_repo()?,
+                }
+            }
+            manifest.checkout_repo()?;
+
+            manifest.compile_source()?;
+            manifest.gen_wrapper()?;
+        }
+
+        self.gen_impl()
     }
 
-    cc::Build::new()
-        .file(&source)
-        .compile(&format!("tree-sitter-{}", name));
+    fn gen_impl(&self) -> Result<(), Box<dyn Error>> {
+        let out_dir = std::env::var("OUT_DIR")?;
+        let file_path = PathBuf::from_iter([&out_dir, "tree_sitter_parsers.rs"]);
+
+        let mut file_content = String::new();
+        for manifest in &self.0 {
+            file_content.push_str(&format!(
+                "include!(concat!(env!(\"OUT_DIR\"), \"/{}.rs\"));\n",
+                manifest.lib_name()
+            ));
+        }
+
+        fs::write(&file_path, file_content)?;
+        eprint!("{}", file_path.display());
+
+        Ok(())
+    }
+
+    pub fn all() -> ParserManifests {
+        ParserManifests(vec![
+            ParserManifest {
+                language: "go".into(),
+                repo_url: "git@github.com:tree-sitter/tree-sitter-go.git".into(),
+                revision: "master".into(),
+            },
+            ParserManifest {
+                language: "ada".into(),
+                repo_url: "git@github.com:briot/tree-sitter-ada.git".into(),
+                revision: "master".into(),
+            },
+        ])
+    }
 }
