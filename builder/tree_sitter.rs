@@ -1,6 +1,6 @@
 use cc;
 use indoc::formatdoc;
-use std::{error::Error, fs, path::PathBuf, process::Command};
+use std::{error::Error, fs, iter::empty, path::PathBuf, process::Command};
 
 pub struct ParserManifest {
     language: String,
@@ -104,18 +104,41 @@ impl ParserManifest {
         Ok(())
     }
 
+    fn load_query(&self, file: String) -> Result<String, Box<dyn Error>> {
+        let out_dir = std::env::var("OUT_DIR")?;
+
+        let in_path = self.repo_dir().join("queries").join(&file);
+        let out_file = format!("{}-{}", &self.language, &file);
+        let out_path = PathBuf::from_iter([&out_dir, &out_file]);
+
+        fs::copy(in_path, &out_path)?;
+
+        Ok(out_file)
+    }
+
+    fn gen_query_const(name: &str, file_path: String) -> String {
+        if !file_path.is_empty() {
+            format!(
+                "    pub const {name}_QUERY: &str = include_str!(concat!(env!(\"OUT_DIR\"), \"/{file_path}\"));\n"
+            )
+        } else {
+            "".into()
+        }
+    }
+
     fn gen_wrapper(&self) -> Result<(), Box<dyn Error>> {
         let out_dir = std::env::var("OUT_DIR")?;
         let file_name = self.lib_name() + ".rs";
         let file_path = PathBuf::from_iter([&out_dir, &file_name]);
 
-        let highlights_path = self.repo_dir().join("queries/highlights.scm");
-        let highlights_file_name = &format!("{}.scm", self.language);
-        let highlights_out_path = PathBuf::from_iter([&out_dir, highlights_file_name]);
-        fs::copy(highlights_path, highlights_out_path)?;
+        let highlights_file = self.load_query("highlights.scm".into())?;
+        let injections_file = self.load_query("injections.scm".into()).unwrap_or_default();
+        let locals_file = self.load_query("locals.scm".into()).unwrap_or_default();
 
+        // TODO: also add injection_query and locals_query if they are found
+        // TODO: HighlightConfiguration fn / const that constructs the struct accordingly
         let file_content = formatdoc! {"
-            mod {0} {{
+            pub mod {0} {{
                 use tree_sitter_language::LanguageFn;
 
                 unsafe extern \"C\" {{
@@ -124,9 +147,11 @@ impl ParserManifest {
 
                 pub const LANGUAGE: LanguageFn = unsafe {{ LanguageFn::from_raw({0}) }};
 
-                pub const HIGHLIGHTS_QUERY: &str = include_str!(concat!(env!(\"OUT_DIR\"), \"/{highlights_file_name}\"));
-            }}",
+            {1}{2}{3}}}",
             self.lib_name(),
+            Self::gen_query_const("HIGHLIGHTS", highlights_file),
+            Self::gen_query_const("INJECTIONS", injections_file),
+            Self::gen_query_const("LOCALS", locals_file),
         };
 
         fs::write(file_path, file_content)?;
@@ -173,7 +198,6 @@ impl ParserManifests {
         }
 
         fs::write(&file_path, file_content)?;
-        eprint!("{}", file_path.display());
 
         Ok(())
     }

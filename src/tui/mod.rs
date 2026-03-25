@@ -1,11 +1,11 @@
 mod app;
 mod help_text;
+mod highlight;
 mod image_cache;
 mod interactive;
 mod kitty_animation;
 #[cfg(feature = "mermaid")]
 mod mermaid;
-mod syntax;
 mod syntax_old;
 pub mod terminal_compat;
 pub mod theme;

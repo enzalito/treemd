@@ -46,7 +46,7 @@ indexmap = { version = "2.13", features = ["serde"] }
 regex = "1.12"
 
 # TUI framework
-ratatui = { version = "0.30", features = ["crossterm_0_29", "unstable-rendered-line-info"] }
+ratatui = { version = "0.30", features = ["serde", "crossterm_0_29", "unstable-rendered-line-info"] }
 crossterm = "0.29"
 color-eyre = "0.6"
 
@@ -87,6 +87,9 @@ notify = "8.0"
 # Open files in editor with line:column positioning
 opensesame = { version = "0.1.1", features = ["serde"] }
 tree-sitter-language = "0.1.7"
+tree-sitter-highlight = "0.26.7"
+tree-sitter-rust = "0.24.1"
+tree-sitter-python = "0.25.0"
 
 # Unix system calls for TTY handling
 [target.'cfg(unix)'.dependencies]
